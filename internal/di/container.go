@@ -8,12 +8,11 @@ import (
 	"backend-test/pkg/logger"
 	"sync"
 
-	//Controller "test-api/internal/app/resume/controller"
 	"backend-test/internal/config"
 	"backend-test/internal/shutdown"
 	"backend-test/pkg/http"
 
-	//"backend-test/pkg/databases/mysql"
+	"backend-test/pkg/database/mysql"
 
 	"go.uber.org/dig"
 )
@@ -34,11 +33,10 @@ func buildContainer() *dig.Container {
 	container := dig.New()
 	container.Provide(logger.NewLog)
 	container.Provide(config.NewConfiguration)
-	//container.Provide(mysql.NewMySQLConnector)
-	container.Provide(repositoryRegister.NewResumeRepository)
+	container.Provide(mysql.NewMySQLConnector)
+	container.Provide(repositoryRegister.NewRegRepository)
 	container.Provide(controllerRegister.NewResumeController)
-	container.Provide(serviceRegister.NewResumeService)
-
+	container.Provide(serviceRegister.NewRegService)
 	container.Provide(health.NewHealthController)
 	container.Provide(shutdown.NewShutdownManager)
 	container.Provide(http.NewServer)

@@ -1,10 +1,12 @@
 package mysql
 
 import (
-	config "backend-test/internal/config"
+	"backend-test/internal/queries"
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
+	"net/url"
 	"sync"
 	"time"
 
@@ -13,8 +15,10 @@ import (
 
 type MySQLConnector struct {
 	DBClient     *sql.DB
+	log          Logger
 	shutdownOnce sync.Once
 	timeout      time.Duration
+	statements   map[string]*sql.Stmt
 }
 
 var (
@@ -22,39 +26,81 @@ var (
 	once           sync.Once
 )
 
-func GetMySQLConnector(datasource *config.MySQLDataSource) *MySQLConnector {
+func GetMySQLConnector(cnnDataSource *DataSource, log Logger) *MySQLConnector {
 	once.Do(func() {
-		mySQLConnector = NewMySQLConnector(*datasource)
+		mySQLConnector, _ = NewMySQLConnector(cnnDataSource, log)
 	})
 	return mySQLConnector
 }
 
-func NewMySQLConnector(datasource config.MySQLDataSource) *MySQLConnector {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true",
-		datasource.User,
-		datasource.Password,
-		datasource.Host,
-		datasource.Port,
-		datasource.Name)
-
-	db, err := sql.Open("mysql", dsn)
+func NewMySQLConnector(cnnDataSource *DataSource, log Logger) (*MySQLConnector, error) {
+	cnnDB := &MySQLConnector{log: log, timeout: cnnDataSource.Timeout}
+	cnnDB.setDBConnection(cnnDataSource)
+	cnnDB.setupDBConnection(cnnDataSource)
+	var err error
+	statements, err := cnnDB.InitStatements(time.Duration(cnnDataSource.TimeoutQuery) * time.Second)
 	if err != nil {
-		log.Fatal("MySQLConnector", "NewMySQLConnector", err)
+		return nil, err
 	}
 
-	db.SetMaxOpenConns(datasource.MaxOpenConnections)
-	db.SetMaxIdleConns(datasource.MaxIdleConnections)
-
-	if err = db.Ping(); err != nil {
-		log.Fatal("MySQLConnector", "NewMySQLConnector", err)
-	}
-
-	return &MySQLConnector{
-		DBClient: db,
-		timeout:  datasource.Timeout,
-	}
+	cnnDB.statements = statements
+	return cnnDB, nil
 }
 
+func (c *MySQLConnector) setDBConnection(cnnDataSource *DataSource) {
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?timeout=%ds&readTimeout=%ds",
+		cnnDataSource.User, url.QueryEscape(cnnDataSource.Password), cnnDataSource.Host, cnnDataSource.Port, cnnDataSource.Name,
+		int(cnnDataSource.Timeout.Seconds()), int(cnnDataSource.Timeout.Seconds()))
+	//if cnnDataSource.ReadOnly {
+	//	dsn += "&ApplicationIntent=ReadOnly"
+	//}
+	log.Println(dsn)
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		c.log.Fatal("MySQLConnector", "setDBConnection", err)
+	}
+	c.DBClient = db
+}
+
+func (c *MySQLConnector) setupDBConnection(cnnConfig *DataSource) {
+	c.DBClient.SetMaxOpenConns(cnnConfig.MaxOpenConnections)
+	c.DBClient.SetMaxIdleConns(cnnConfig.MaxIdleConnections)
+	c.DBClient.SetConnMaxLifetime(cnnConfig.MaxLifetimeConnections)
+}
+
+func (c *MySQLConnector) InitStatements(timeout time.Duration) (map[string]*sql.Stmt, error) {
+	statements := make(map[string]*sql.Stmt)
+	preparedQueries := map[string]string{
+		"InsertRegEntrance": queries.InsertRegEntrance,
+		// "InsertRegistroElementosUtilizados": queries.InsertRegistroElementosUtilizados,
+	}
+	for name, query := range preparedQueries {
+		stmt, err := c.prepareContext(timeout, query)
+		if err != nil {
+			c.log.Error("SQLConnector", "InitializeStatements", err)
+			return nil, err
+		}
+		statements[name] = stmt
+	}
+	return statements, nil
+}
+
+func (c *MySQLConnector) prepareContext(timeout time.Duration, query string) (*sql.Stmt, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	stmt, err := c.DBClient.PrepareContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	return stmt, nil
+}
+
+func (c *MySQLConnector) GetStatements(name string) (*sql.Stmt, bool) {
+	stmt, ok := c.statements[name]
+	return stmt, ok
+}
+
+// ============================================
 func (m *MySQLConnector) HealthCheck() error {
 	if m.DBClient != nil {
 		if err := m.DBClient.Ping(); err != nil {

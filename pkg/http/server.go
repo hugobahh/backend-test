@@ -59,6 +59,8 @@ func (s *Server) setupRoutes() {
 func (s *Server) handleRegisterEntrance(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
+		s.registerController.ExistPlate(w, r)
+	case http.MethodPost:
 		s.registerController.RegisterEntrance(w, r)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

@@ -45,3 +45,9 @@ func (rc *RegisterController) RegisterExit(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusOK) // 200 OK
 	json.NewEncoder(w).Encode(response)
 }
+
+func (rc *RegisterController) ExistPlate(w http.ResponseWriter, r *http.Request) {
+	response := map[string]string{"status": "request arrive..."}
+	w.WriteHeader(http.StatusOK) // 200 OK
+	json.NewEncoder(w).Encode(response)
+}

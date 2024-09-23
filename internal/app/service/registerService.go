@@ -14,17 +14,21 @@ type IRegisterService interface {
 
 type RegisterService struct {
 	Log        logger.Logger
-	repository repository.DataRepository
+	repository repository.RegRepository
 }
 
-func NewResumeService(repo *repository.DataRepository, log *logger.Log) *RegisterService {
+func NewRegService(repo *repository.RegRepository, log *logger.Log) *RegisterService {
 	return &RegisterService{Log: log, repository: *repo}
 }
 
 func (rs *RegisterService) RegisterEntrance(ctx context.Context, sId string) error {
 	//return s.repository.GetItems(ctx)
-	rs.Log.Infof("RegisterEntrance ...")
-	rs.repository.RegisterEntrance(ctx, "1")
+	//rs.Log.Infof("RegisterEntrance ...")
+	err := rs.repository.RegisterEntrance(ctx, "1")
+	if err != nil {
+		logger.GetLogger().Error("RegisterService", "Error executing query", err)
+		return err
+	}
 	return nil
 }
 
